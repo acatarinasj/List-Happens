@@ -320,11 +320,11 @@
     </div>
     <div class="radio-group">
       <label><input type="radio" name="new-checklist-source" value="empty" checked> Começar vazia (adicionar itens um a um)</label>
-      <label><input type="radio" name="new-checklist-source" value="template"> A partir de um modelo já criado</label>
+      <label><input type="radio" name="new-checklist-source" value="template"> A partir de um ou mais modelos já criados</label>
     </div>
     <div class="field hidden" id="new-checklist-template-picker">
-      <label for="new-checklist-template-select">Modelo</label>
-      <select id="new-checklist-template-select"></select>
+      <label>Modelos (podes escolher mais do que um)</label>
+      <div class="draft-items" id="new-checklist-template-list"></div>
     </div>
     <div class="field">
       <label>Itens</label>
@@ -973,15 +973,57 @@
   });
 
   // ---------- modal: new checklist ----------
-  function populateTemplateSelect(){
-    var sel = $('#new-checklist-template-select');
-    sel.innerHTML = '';
+  function populateTemplateCheckboxList(preselectedIds){
+    var container = $('#new-checklist-template-list');
+    container.innerHTML = '';
+    if(state.templates.length === 0){
+      var p = document.createElement('p');
+      p.className = 'hint';
+      p.textContent = 'Ainda não tens modelos guardados.';
+      container.appendChild(p);
+      return;
+    }
     state.templates.forEach(function(t){
-      var opt = document.createElement('option');
-      opt.value = t.id;
-      opt.textContent = t.name + ' (' + t.items.length + ' itens)';
-      sel.appendChild(opt);
+      var row = document.createElement('label');
+      row.className = 'draft-item-row';
+      row.style.cursor = 'pointer';
+      var left = document.createElement('span');
+      left.style.display = 'flex';
+      left.style.alignItems = 'center';
+      left.style.gap = '8px';
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = t.id;
+      cb.checked = preselectedIds.indexOf(t.id) !== -1;
+      cb.addEventListener('change', recomputeDraftFromSelectedTemplates);
+      var span = document.createElement('span');
+      span.textContent = t.name + ' (' + t.items.length + ' itens)';
+      left.appendChild(cb);
+      left.appendChild(span);
+      row.appendChild(left);
+      container.appendChild(row);
     });
+  }
+
+  function getSelectedTemplateIds(){
+    return $$('#new-checklist-template-list input[type="checkbox"]:checked').map(function(cb){ return cb.value; });
+  }
+
+  function recomputeDraftFromSelectedTemplates(){
+    var selectedIds = getSelectedTemplateIds();
+    var selectedTemplates = selectedIds.map(function(id){
+      return state.templates.find(function(t){ return t.id === id; });
+    }).filter(Boolean);
+
+    newChecklistDraftItems = [];
+    selectedTemplates.forEach(function(t){
+      t.items.forEach(function(i){ newChecklistDraftItems.push({ text: i.text }); });
+    });
+
+    if(!$('#new-checklist-name').value.trim() && selectedTemplates.length){
+      $('#new-checklist-name').value = selectedTemplates.map(function(t){ return t.name; }).join(' + ');
+    }
+    renderNewChecklistDraftItems();
   }
 
   function renderDraftItems(container, items, onRemove){
@@ -1023,16 +1065,18 @@
     $('#new-checklist-save-template-toggle').checked = false;
     $('#new-checklist-template-name-field').classList.add('hidden');
     $('#new-checklist-template-name').value = '';
-    populateTemplateSelect();
 
     var sourceRadios = $$('input[name="new-checklist-source"]');
     var fromTemplateId = opts.fromTemplateId || null;
+    var preselectedIds = (fromTemplateId && state.templates.some(function(t){ return t.id === fromTemplateId; }))
+      ? [fromTemplateId] : [];
 
-    if(fromTemplateId && state.templates.some(function(t){ return t.id === fromTemplateId; })){
+    populateTemplateCheckboxList(preselectedIds);
+
+    if(preselectedIds.length){
       sourceRadios.forEach(function(r){ r.checked = (r.value === 'template'); });
       $('#new-checklist-template-picker').classList.remove('hidden');
-      $('#new-checklist-template-select').value = fromTemplateId;
-      loadDraftFromTemplate(fromTemplateId);
+      recomputeDraftFromSelectedTemplates();
     } else {
       sourceRadios.forEach(function(r){ r.checked = (r.value === 'empty'); });
       $('#new-checklist-template-picker').classList.add('hidden');
@@ -1043,34 +1087,19 @@
     $('#new-checklist-name').focus();
   }
 
-  function loadDraftFromTemplate(templateId){
-    var t = state.templates.find(function(x){ return x.id === templateId; });
-    if(!t) return;
-    newChecklistDraftItems = t.items.map(function(i){ return { text: i.text }; });
-    if(!$('#new-checklist-name').value.trim()){
-      $('#new-checklist-name').value = t.name;
-    }
-    renderNewChecklistDraftItems();
-  }
-
   $$('input[name="new-checklist-source"]').forEach(function(radio){
     radio.addEventListener('change', function(){
       var mode = $$('input[name="new-checklist-source"]').find(function(r){ return r.checked; }).value;
       if(mode === 'template'){
         $('#new-checklist-template-picker').classList.remove('hidden');
-        if(state.templates.length){
-          loadDraftFromTemplate($('#new-checklist-template-select').value);
-        }
+        recomputeDraftFromSelectedTemplates();
       } else {
         $('#new-checklist-template-picker').classList.add('hidden');
+        $$('#new-checklist-template-list input[type="checkbox"]').forEach(function(cb){ cb.checked = false; });
         newChecklistDraftItems = [];
         renderNewChecklistDraftItems();
       }
     });
-  });
-
-  $('#new-checklist-template-select').addEventListener('change', function(){
-    loadDraftFromTemplate(this.value);
   });
 
   $('#new-checklist-item-form').addEventListener('submit', function(e){
