@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Checklists — organiza as tuas listas</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
     --bg:#f4f5fb;
@@ -46,9 +47,30 @@
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     -webkit-font-smoothing:antialiased;
   }
+  .hidden{ display:none !important; }
+
+  /* ---------- auth screen ---------- */
+  .auth-screen{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .auth-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:16px; box-shadow:var(--shadow);
+    padding:32px; width:100%; max-width:380px;
+  }
+  .auth-card h1{ margin:0 0 4px; font-size:1.4rem; text-align:center; }
+  .auth-card .hint{ text-align:center; margin:0 0 20px; }
+  .auth-form{ display:flex; flex-direction:column; gap:14px; }
+  .auth-submit{ width:100%; margin-top:4px; }
+  .auth-error{ color:var(--danger); font-size:.85rem; margin:0; }
+  .auth-info{ color:var(--success); font-size:.85rem; margin:0; }
+  .auth-toggle{ text-align:center; font-size:.88rem; color:var(--text-muted); margin:18px 0 0; }
+  .auth-toggle a{ color:var(--primary); text-decoration:none; font-weight:600; cursor:pointer; }
+  .auth-toggle a:hover{ text-decoration:underline; }
+
   .app{ max-width:960px; margin:0 auto; padding:24px 20px 80px; }
   header.topbar{ display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:20px; }
   header.topbar h1{ font-size:1.5rem; margin:0; display:flex; align-items:center; gap:8px; }
+  .topbar-right{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .user-menu{ display:flex; align-items:center; gap:10px; }
+  .user-email{ font-size:.82rem; color:var(--text-muted); max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   nav.tabs{ display:flex; gap:6px; background:var(--surface-alt); padding:4px; border-radius:999px; }
   nav.tabs button{
     border:none; background:transparent; padding:8px 16px; border-radius:999px;
@@ -59,11 +81,14 @@
   .toolbar{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:18px; }
   .toolbar input[type="search"]{ flex:1; min-width:180px; }
 
-  input[type="text"], input[type="search"], select{
+  input[type="text"], input[type="search"], input[type="email"], input[type="password"], select{
     font:inherit; padding:10px 12px; border-radius:10px; border:1px solid var(--border);
     background:var(--surface); color:var(--text); outline:none;
   }
-  input[type="text"]:focus, input[type="search"]:focus, select:focus{ border-color:var(--primary); }
+  input:focus, select:focus{ border-color:var(--primary); }
+
+  .field{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+  .field label{ font-size:.85rem; font-weight:600; color:var(--text-muted); }
 
   .btn{
     font:inherit; font-weight:600; border-radius:10px; padding:10px 16px; cursor:pointer;
@@ -79,6 +104,8 @@
 
   .view{ display:none; }
   .view.active{ display:block; }
+
+  .loading-state{ text-align:center; color:var(--text-muted); padding:48px 16px; }
 
   .cards-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:16px; }
   .card{
@@ -129,6 +156,10 @@
   .draft-item-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; background:var(--surface-alt); border-radius:8px; padding:8px 10px; font-size:.92rem; }
   .hint{ color:var(--text-muted); font-size:.85rem; margin:6px 0; }
 
+  .radio-group{ display:flex; flex-direction:column; gap:8px; margin-bottom:14px; }
+  .radio-group label{ display:flex; align-items:center; gap:8px; font-size:.92rem; cursor:pointer; }
+  .checkbox-row{ display:flex; align-items:center; gap:8px; font-size:.92rem; margin:14px 0; cursor:pointer; }
+
   .modal-overlay{
     position:fixed; inset:0; background:rgba(15,16,30,.5); display:flex; align-items:center; justify-content:center;
     padding:20px; z-index:50;
@@ -139,13 +170,7 @@
     max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.25);
   }
   .modal h2{ margin:0 0 16px; font-size:1.2rem; }
-  .field{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
-  .field label{ font-size:.85rem; font-weight:600; color:var(--text-muted); }
-  .radio-group{ display:flex; flex-direction:column; gap:8px; margin-bottom:14px; }
-  .radio-group label{ display:flex; align-items:center; gap:8px; font-size:.92rem; cursor:pointer; }
-  .checkbox-row{ display:flex; align-items:center; gap:8px; font-size:.92rem; margin:14px 0; cursor:pointer; }
   .modal-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:18px; }
-  .hidden{ display:none !important; }
 
   #toast{
     position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px);
@@ -161,14 +186,62 @@
 </style>
 </head>
 <body>
-<div class="app">
+
+<!-- AUTH SCREEN -->
+<div class="auth-screen" id="auth-screen">
+  <div class="auth-card">
+    <h1>✅ Checklists</h1>
+    <p class="hint" id="auth-subtitle">Entra para veres as tuas checklists.</p>
+
+    <form class="auth-form" id="login-form">
+      <div class="field">
+        <label for="login-email">Email</label>
+        <input type="email" id="login-email" autocomplete="email" required>
+      </div>
+      <div class="field">
+        <label for="login-password">Palavra-passe</label>
+        <input type="password" id="login-password" autocomplete="current-password" required>
+      </div>
+      <p class="auth-error hidden" id="login-error"></p>
+      <button type="submit" class="btn primary auth-submit" id="login-submit">Entrar</button>
+    </form>
+
+    <form class="auth-form hidden" id="signup-form">
+      <div class="field">
+        <label for="signup-email">Email</label>
+        <input type="email" id="signup-email" autocomplete="email" required>
+      </div>
+      <div class="field">
+        <label for="signup-password">Palavra-passe</label>
+        <input type="password" id="signup-password" autocomplete="new-password" minlength="6" required>
+      </div>
+      <p class="auth-error hidden" id="signup-error"></p>
+      <p class="auth-info hidden" id="signup-info"></p>
+      <button type="submit" class="btn primary auth-submit" id="signup-submit">Criar conta</button>
+    </form>
+
+    <p class="auth-toggle">
+      <span id="show-signup-link">Ainda não tens conta? <a>Criar conta</a></span>
+      <span id="show-login-link" class="hidden">Já tens conta? <a>Entrar</a></span>
+    </p>
+  </div>
+</div>
+
+<!-- APP -->
+<div class="app hidden" id="app-screen">
 
   <header class="topbar">
     <h1>✅ Checklists</h1>
-    <nav class="tabs">
-      <button class="tab active" id="tab-lists" data-view="lists">As minhas checklists</button>
-      <button class="tab" id="tab-templates" data-view="templates">Modelos</button>
-    </nav>
+    <div class="topbar-right">
+      <nav class="tabs">
+        <button class="tab active" id="tab-lists" data-view="lists">As minhas checklists</button>
+        <button class="tab" id="tab-templates" data-view="templates">Modelos</button>
+      </nav>
+      <div class="user-menu">
+        <span class="user-email" id="user-email"></span>
+        <button class="btn subtle" id="btn-logout">Sair</button>
+      </div>
+    </div>
   </header>
 
   <!-- LISTS VIEW -->
@@ -177,6 +250,7 @@
       <input type="search" id="search-lists" placeholder="Procurar checklist...">
       <button class="btn primary" id="btn-new-checklist">+ Nova checklist</button>
     </div>
+    <p class="loading-state hidden" id="lists-loading">A carregar...</p>
     <div class="cards-grid" id="lists-grid"></div>
     <p class="empty-state hidden" id="lists-empty">Ainda não tens nenhuma checklist. Cria a primeira para começar a organizar as tuas tarefas.</p>
   </main>
@@ -316,49 +390,12 @@
 (function(){
   'use strict';
 
-  var STORAGE_KEY = 'checklist-tracker:v1';
-
-  function uid(prefix){
-    return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-  }
-
-  function loadData(){
-    try{
-      var raw = localStorage.getItem(STORAGE_KEY);
-      if(!raw) return { checklists: [], templates: [] };
-      var parsed = JSON.parse(raw);
-      return {
-        checklists: Array.isArray(parsed.checklists) ? parsed.checklists : [],
-        templates: Array.isArray(parsed.templates) ? parsed.templates : []
-      };
-    }catch(e){
-      console.error('Não foi possível carregar os dados guardados.', e);
-      return { checklists: [], templates: [] };
-    }
-  }
-
-  function saveData(){
-    try{
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    }catch(e){
-      console.error('Não foi possível guardar os dados.', e);
-      showToast('Não foi possível guardar as alterações.');
-    }
-  }
-
-  var state = loadData();
-  var currentChecklistId = null;
-  var currentTemplateId = null;
-  var newChecklistDraftItems = [];
-  var newTemplateDraftItems = [];
+  var SUPABASE_URL = "https://fmpbhmaqbtofbhsbxptv.supabase.co";
+  var SUPABASE_KEY = "sb_publishable_adI9a6d3Ws90bfm__Ees8g_nqi2ZT5z";
+  var supa = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
   var $ = function(sel){ return document.querySelector(sel); };
   var $$ = function(sel){ return Array.prototype.slice.call(document.querySelectorAll(sel)); };
-
-  function fmtDate(iso){
-    try{ return new Date(iso).toLocaleDateString('pt-PT', { day:'2-digit', month:'short', year:'numeric' }); }
-    catch(e){ return ''; }
-  }
 
   var toastTimer = null;
   function showToast(msg){
@@ -366,7 +403,147 @@
     el.textContent = msg;
     el.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function(){ el.classList.remove('show'); }, 2400);
+    toastTimer = setTimeout(function(){ el.classList.remove('show'); }, 2600);
+  }
+
+  function fmtDate(iso){
+    try{ return new Date(iso).toLocaleDateString('pt-PT', { day:'2-digit', month:'short', year:'numeric' }); }
+    catch(e){ return ''; }
+  }
+
+  function errMsg(error){
+    if(!error) return 'Erro desconhecido.';
+    return error.message || 'Erro desconhecido.';
+  }
+
+  // ---------- state ----------
+  var currentUser = null;
+  var state = { checklists: [], templates: [] };
+  var currentChecklistId = null;
+  var currentTemplateId = null;
+  var newChecklistDraftItems = [];
+  var newTemplateDraftItems = [];
+
+  // ---------- auth screen ----------
+  function showAuthScreen(){
+    $('#app-screen').classList.add('hidden');
+    $('#auth-screen').classList.remove('hidden');
+  }
+
+  function showAppScreen(){
+    $('#auth-screen').classList.add('hidden');
+    $('#app-screen').classList.remove('hidden');
+  }
+
+  $('#show-signup-link a').addEventListener('click', function(){
+    $('#login-form').classList.add('hidden');
+    $('#signup-form').classList.remove('hidden');
+    $('#show-signup-link').classList.add('hidden');
+    $('#show-login-link').classList.remove('hidden');
+    $('#auth-subtitle').textContent = 'Cria uma conta para começares.';
+  });
+
+  $('#show-login-link a').addEventListener('click', function(){
+    $('#signup-form').classList.add('hidden');
+    $('#login-form').classList.remove('hidden');
+    $('#show-login-link').classList.add('hidden');
+    $('#show-signup-link').classList.remove('hidden');
+    $('#auth-subtitle').textContent = 'Entra para veres as tuas checklists.';
+  });
+
+  function setAuthError(id, message){
+    var el = $(id);
+    if(message){ el.textContent = message; el.classList.remove('hidden'); }
+    else { el.textContent = ''; el.classList.add('hidden'); }
+  }
+
+  $('#login-form').addEventListener('submit', function(e){
+    e.preventDefault();
+    if(!supa){ setAuthError('#login-error', 'Ligação à base de dados não disponível.'); return; }
+    setAuthError('#login-error', '');
+    var email = $('#login-email').value.trim();
+    var password = $('#login-password').value;
+    var btn = $('#login-submit');
+    btn.disabled = true;
+    supa.auth.signInWithPassword({ email: email, password: password }).then(function(res){
+      btn.disabled = false;
+      if(res.error){ setAuthError('#login-error', 'Não foi possível entrar: ' + res.error.message); return; }
+      // onAuthStateChange handles the rest
+    });
+  });
+
+  $('#signup-form').addEventListener('submit', function(e){
+    e.preventDefault();
+    if(!supa){ setAuthError('#signup-error', 'Ligação à base de dados não disponível.'); return; }
+    setAuthError('#signup-error', '');
+    $('#signup-info').classList.add('hidden');
+    var email = $('#signup-email').value.trim();
+    var password = $('#signup-password').value;
+    var btn = $('#signup-submit');
+    btn.disabled = true;
+    supa.auth.signUp({ email: email, password: password }).then(function(res){
+      btn.disabled = false;
+      if(res.error){ setAuthError('#signup-error', 'Não foi possível criar a conta: ' + res.error.message); return; }
+      if(res.data && res.data.session){
+        // account auto-confirmed, onAuthStateChange handles the rest
+        return;
+      }
+      var info = $('#signup-info');
+      info.textContent = 'Conta criada. Verifica o teu email para confirmares a conta e depois entra.';
+      info.classList.remove('hidden');
+      $('#signup-form').reset();
+    });
+  });
+
+  $('#btn-logout').addEventListener('click', function(){
+    if(!supa) return;
+    supa.auth.signOut();
+  });
+
+  // ---------- data loading ----------
+  function resetState(){
+    state = { checklists: [], templates: [] };
+    currentChecklistId = null;
+    currentTemplateId = null;
+  }
+
+  function loadAllData(){
+    $('#lists-loading').classList.remove('hidden');
+    $('#lists-grid').innerHTML = '';
+    $('#lists-empty').classList.add('hidden');
+
+    return Promise.all([
+      supa.from('checklists').select('*').order('created_at', { ascending: false }),
+      supa.from('checklist_items').select('*').order('position', { ascending: true }),
+      supa.from('checklist_templates').select('*').order('name', { ascending: true }),
+      supa.from('checklist_template_items').select('*').order('position', { ascending: true })
+    ]).then(function(results){
+      var checklistsRes = results[0], itemsRes = results[1], templatesRes = results[2], templateItemsRes = results[3];
+      var firstError = checklistsRes.error || itemsRes.error || templatesRes.error || templateItemsRes.error;
+      if(firstError){
+        showToast('Erro ao carregar dados: ' + errMsg(firstError));
+        state = { checklists: [], templates: [] };
+        return;
+      }
+      var itemsByChecklist = {};
+      (itemsRes.data || []).forEach(function(it){
+        (itemsByChecklist[it.checklist_id] = itemsByChecklist[it.checklist_id] || []).push(it);
+      });
+      var itemsByTemplate = {};
+      (templateItemsRes.data || []).forEach(function(it){
+        (itemsByTemplate[it.template_id] = itemsByTemplate[it.template_id] || []).push(it);
+      });
+      state.checklists = (checklistsRes.data || []).map(function(cl){
+        cl.items = itemsByChecklist[cl.id] || [];
+        return cl;
+      });
+      state.templates = (templatesRes.data || []).map(function(t){
+        t.items = itemsByTemplate[t.id] || [];
+        return t;
+      });
+    }).finally(function(){
+      $('#lists-loading').classList.add('hidden');
+    });
   }
 
   // ---------- view switching ----------
@@ -399,7 +576,7 @@
     grid.innerHTML = '';
     var items = state.checklists
       .filter(function(cl){ return cl.name.toLowerCase().indexOf(query) !== -1; })
-      .sort(function(a, b){ return b.createdAt - a.createdAt; });
+      .sort(function(a, b){ return new Date(b.created_at) - new Date(a.created_at); });
 
     $('#lists-empty').classList.toggle('hidden', state.checklists.length !== 0);
 
@@ -421,19 +598,14 @@
       del.textContent = '✕';
       del.addEventListener('click', function(e){
         e.stopPropagation();
-        if(confirm('Eliminar a checklist "' + cl.name + '"?')){
-          state.checklists = state.checklists.filter(function(x){ return x.id !== cl.id; });
-          saveData();
-          renderListsGrid();
-          showToast('Checklist eliminada.');
-        }
+        deleteChecklistById(cl.id, cl.name, renderListsGrid);
       });
       top.appendChild(title);
       top.appendChild(del);
 
       var meta = document.createElement('div');
       meta.className = 'card-meta';
-      meta.textContent = progress.done + '/' + progress.total + ' concluídos · criada em ' + fmtDate(cl.createdAt);
+      meta.textContent = progress.done + '/' + progress.total + ' concluídos · criada em ' + fmtDate(cl.created_at);
 
       var track = document.createElement('div');
       track.className = 'progress-track';
@@ -452,6 +624,26 @@
   }
 
   $('#search-lists').addEventListener('input', renderListsGrid);
+
+  function deleteChecklistById(id, name, onDone){
+    if(!confirm('Eliminar a checklist "' + name + '"?')) return;
+    supa.from('checklists').delete().eq('id', id).then(function(res){
+      if(res.error){ showToast('Erro ao eliminar: ' + errMsg(res.error)); return; }
+      state.checklists = state.checklists.filter(function(x){ return x.id !== id; });
+      showToast('Checklist eliminada.');
+      if(onDone) onDone();
+    });
+  }
+
+  function deleteTemplateById(id, name, onDone){
+    if(!confirm('Eliminar o modelo "' + name + '"? As checklists já criadas a partir dele não são afetadas.')) return;
+    supa.from('checklist_templates').delete().eq('id', id).then(function(res){
+      if(res.error){ showToast('Erro ao eliminar: ' + errMsg(res.error)); return; }
+      state.templates = state.templates.filter(function(x){ return x.id !== id; });
+      showToast('Modelo eliminado.');
+      if(onDone) onDone();
+    });
+  }
 
   // ---------- templates grid ----------
   function renderTemplatesGrid(){
@@ -480,19 +672,14 @@
       del.textContent = '✕';
       del.addEventListener('click', function(e){
         e.stopPropagation();
-        if(confirm('Eliminar o modelo "' + t.name + '"? As checklists já criadas a partir dele não são afetadas.')){
-          state.templates = state.templates.filter(function(x){ return x.id !== t.id; });
-          saveData();
-          renderTemplatesGrid();
-          showToast('Modelo eliminado.');
-        }
+        deleteTemplateById(t.id, t.name, renderTemplatesGrid);
       });
       top.appendChild(title);
       top.appendChild(del);
 
       var meta = document.createElement('div');
       meta.className = 'card-meta';
-      meta.textContent = t.items.length + ' itens · criado em ' + fmtDate(t.createdAt);
+      meta.textContent = t.items.length + ' itens · criado em ' + fmtDate(t.created_at);
 
       var actions = document.createElement('div');
       actions.className = 'card-actions';
@@ -553,9 +740,17 @@
     checkbox.type = 'checkbox';
     checkbox.checked = !!item.done;
     checkbox.addEventListener('change', function(){
-      item.done = checkbox.checked;
-      saveData();
+      var newVal = checkbox.checked;
+      var prevVal = item.done;
+      item.done = newVal;
       renderChecklistDetail();
+      supa.from('checklist_items').update({ done: newVal }).eq('id', item.id).then(function(res){
+        if(res.error){
+          item.done = prevVal;
+          renderChecklistDetail();
+          showToast('Erro ao guardar: ' + errMsg(res.error));
+        }
+      });
     });
 
     var text = document.createElement('span');
@@ -572,9 +767,17 @@
       input.select();
       function commit(){
         var v = input.value.trim();
-        if(v) item.text = v;
-        saveData();
+        if(!v || v === item.text){ renderChecklistDetail(); return; }
+        var prev = item.text;
+        item.text = v;
         renderChecklistDetail();
+        supa.from('checklist_items').update({ text: v }).eq('id', item.id).then(function(res){
+          if(res.error){
+            item.text = prev;
+            renderChecklistDetail();
+            showToast('Erro ao guardar: ' + errMsg(res.error));
+          }
+        });
       }
       input.addEventListener('blur', commit);
       input.addEventListener('keydown', function(e){
@@ -589,9 +792,11 @@
     del.textContent = '✕';
     del.title = 'Remover item';
     del.addEventListener('click', function(){
-      cl.items = cl.items.filter(function(i){ return i.id !== item.id; });
-      saveData();
-      renderChecklistDetail();
+      supa.from('checklist_items').delete().eq('id', item.id).then(function(res){
+        if(res.error){ showToast('Erro ao remover: ' + errMsg(res.error)); return; }
+        cl.items = cl.items.filter(function(i){ return i.id !== item.id; });
+        renderChecklistDetail();
+      });
     });
 
     row.appendChild(checkbox);
@@ -603,9 +808,13 @@
   $('#detail-name').addEventListener('change', function(){
     var cl = getCurrentChecklist();
     if(!cl) return;
-    cl.name = $('#detail-name').value.trim() || 'Checklist sem nome';
-    $('#detail-name').value = cl.name;
-    saveData();
+    var name = $('#detail-name').value.trim() || 'Checklist sem nome';
+    var prev = cl.name;
+    cl.name = name;
+    $('#detail-name').value = name;
+    supa.from('checklists').update({ name: name }).eq('id', cl.id).then(function(res){
+      if(res.error){ cl.name = prev; $('#detail-name').value = prev; showToast('Erro ao guardar: ' + errMsg(res.error)); }
+    });
   });
 
   $('#detail-add-item-form').addEventListener('submit', function(e){
@@ -615,11 +824,15 @@
     if(!text) return;
     var cl = getCurrentChecklist();
     if(!cl) return;
-    cl.items.push({ id: uid('item'), text: text, done: false });
     input.value = '';
-    saveData();
-    renderChecklistDetail();
-    input.focus();
+    supa.from('checklist_items')
+      .insert({ checklist_id: cl.id, text: text, position: cl.items.length, done: false })
+      .select().single().then(function(res){
+        if(res.error){ showToast('Erro ao adicionar: ' + errMsg(res.error)); return; }
+        cl.items.push(res.data);
+        renderChecklistDetail();
+        input.focus();
+      });
   });
 
   $('#btn-back-detail').addEventListener('click', function(){ showTab('lists'); });
@@ -627,12 +840,7 @@
   $('#btn-delete-checklist').addEventListener('click', function(){
     var cl = getCurrentChecklist();
     if(!cl) return;
-    if(confirm('Eliminar a checklist "' + cl.name + '"?')){
-      state.checklists = state.checklists.filter(function(c){ return c.id !== cl.id; });
-      saveData();
-      showToast('Checklist eliminada.');
-      showTab('lists');
-    }
+    deleteChecklistById(cl.id, cl.name, function(){ showTab('lists'); });
   });
 
   // ---------- template detail ----------
@@ -678,9 +886,17 @@
       input.select();
       function commit(){
         var v = input.value.trim();
-        if(v) item.text = v;
-        saveData();
+        if(!v || v === item.text){ renderTemplateDetail(); return; }
+        var prev = item.text;
+        item.text = v;
         renderTemplateDetail();
+        supa.from('checklist_template_items').update({ text: v }).eq('id', item.id).then(function(res){
+          if(res.error){
+            item.text = prev;
+            renderTemplateDetail();
+            showToast('Erro ao guardar: ' + errMsg(res.error));
+          }
+        });
       }
       input.addEventListener('blur', commit);
       input.addEventListener('keydown', function(e){
@@ -695,9 +911,11 @@
     del.textContent = '✕';
     del.title = 'Remover item';
     del.addEventListener('click', function(){
-      t.items = t.items.filter(function(i){ return i.id !== item.id; });
-      saveData();
-      renderTemplateDetail();
+      supa.from('checklist_template_items').delete().eq('id', item.id).then(function(res){
+        if(res.error){ showToast('Erro ao remover: ' + errMsg(res.error)); return; }
+        t.items = t.items.filter(function(i){ return i.id !== item.id; });
+        renderTemplateDetail();
+      });
     });
 
     row.appendChild(text);
@@ -708,10 +926,14 @@
   $('#template-detail-name').addEventListener('change', function(){
     var t = getCurrentTemplate();
     if(!t) return;
-    t.name = $('#template-detail-name').value.trim() || 'Modelo sem nome';
-    $('#template-detail-name').value = t.name;
-    saveData();
-    renderTemplatesGrid();
+    var name = $('#template-detail-name').value.trim() || 'Modelo sem nome';
+    var prev = t.name;
+    t.name = name;
+    $('#template-detail-name').value = name;
+    supa.from('checklist_templates').update({ name: name }).eq('id', t.id).then(function(res){
+      if(res.error){ t.name = prev; $('#template-detail-name').value = prev; showToast('Erro ao guardar: ' + errMsg(res.error)); return; }
+      renderTemplatesGrid();
+    });
   });
 
   $('#template-detail-add-item-form').addEventListener('submit', function(e){
@@ -721,11 +943,15 @@
     if(!text) return;
     var t = getCurrentTemplate();
     if(!t) return;
-    t.items.push({ id: uid('item'), text: text });
     input.value = '';
-    saveData();
-    renderTemplateDetail();
-    input.focus();
+    supa.from('checklist_template_items')
+      .insert({ template_id: t.id, text: text, position: t.items.length })
+      .select().single().then(function(res){
+        if(res.error){ showToast('Erro ao adicionar: ' + errMsg(res.error)); return; }
+        t.items.push(res.data);
+        renderTemplateDetail();
+        input.focus();
+      });
   });
 
   $('#btn-back-template-detail').addEventListener('click', function(){ showTab('templates'); });
@@ -733,12 +959,7 @@
   $('#btn-delete-template').addEventListener('click', function(){
     var t = getCurrentTemplate();
     if(!t) return;
-    if(confirm('Eliminar o modelo "' + t.name + '"?')){
-      state.templates = state.templates.filter(function(x){ return x.id !== t.id; });
-      saveData();
-      showToast('Modelo eliminado.');
-      showTab('templates');
-    }
+    deleteTemplateById(t.id, t.name, function(){ showTab('templates'); });
   });
 
   $('#btn-use-template').addEventListener('click', function(){
@@ -808,9 +1029,6 @@
       $('#new-checklist-template-picker').classList.remove('hidden');
       $('#new-checklist-template-select').value = fromTemplateId;
       loadDraftFromTemplate(fromTemplateId);
-    } else if(state.templates.length === 0) {
-      sourceRadios.forEach(function(r){ r.checked = (r.value === 'empty'); });
-      $('#new-checklist-template-picker').classList.add('hidden');
     } else {
       sourceRadios.forEach(function(r){ r.checked = (r.value === 'empty'); });
       $('#new-checklist-template-picker').classList.add('hidden');
@@ -876,29 +1094,61 @@
     var name = $('#new-checklist-name').value.trim();
     if(!name){ showToast('Dá um nome à checklist.'); $('#new-checklist-name').focus(); return; }
 
-    var checklist = {
-      id: uid('cl'),
-      name: name,
-      items: newChecklistDraftItems.map(function(i){ return { id: uid('item'), text: i.text, done: false }; }),
-      createdAt: Date.now()
-    };
-    state.checklists.push(checklist);
+    var wantsTemplate = $('#new-checklist-save-template-toggle').checked;
+    var templateName = $('#new-checklist-template-name').value.trim() || name;
+    var draftItems = newChecklistDraftItems.slice();
+    var confirmBtn = $('#btn-confirm-new-checklist');
+    confirmBtn.disabled = true;
 
-    if($('#new-checklist-save-template-toggle').checked){
-      var templateName = $('#new-checklist-template-name').value.trim() || name;
-      state.templates.push({
-        id: uid('tpl'),
-        name: templateName,
-        items: newChecklistDraftItems.map(function(i){ return { id: uid('item'), text: i.text }; }),
-        createdAt: Date.now()
-      });
-    }
+    supa.from('checklists').insert({ name: name }).select().single().then(function(res){
+      if(res.error){ confirmBtn.disabled = false; showToast('Erro ao criar checklist: ' + errMsg(res.error)); return; }
+      var cl = res.data;
+      cl.items = [];
 
-    saveData();
-    closeNewChecklistModal();
-    showTab('lists');
-    openChecklistDetail(checklist.id);
-    showToast('Checklist criada.');
+      var afterItems = function(){
+        state.checklists.push(cl);
+
+        var afterTemplate = function(){
+          confirmBtn.disabled = false;
+          closeNewChecklistModal();
+          showTab('lists');
+          openChecklistDetail(cl.id);
+          showToast('Checklist criada.');
+        };
+
+        if(wantsTemplate){
+          supa.from('checklist_templates').insert({ name: templateName }).select().single().then(function(tres){
+            if(tres.error){ showToast('Checklist criada, mas o modelo falhou: ' + errMsg(tres.error)); afterTemplate(); return; }
+            var tpl = tres.data;
+            tpl.items = [];
+            if(draftItems.length){
+              var tRows = draftItems.map(function(it, idx){ return { template_id: tpl.id, text: it.text, position: idx }; });
+              supa.from('checklist_template_items').insert(tRows).select().then(function(tiRes){
+                if(!tiRes.error) tpl.items = tiRes.data;
+                state.templates.push(tpl);
+                afterTemplate();
+              });
+            } else {
+              state.templates.push(tpl);
+              afterTemplate();
+            }
+          });
+        } else {
+          afterTemplate();
+        }
+      };
+
+      if(draftItems.length){
+        var rows = draftItems.map(function(it, idx){ return { checklist_id: cl.id, text: it.text, position: idx, done: false }; });
+        supa.from('checklist_items').insert(rows).select().then(function(iRes){
+          if(iRes.error){ showToast('Checklist criada, mas alguns itens falharam: ' + errMsg(iRes.error)); }
+          else cl.items = iRes.data;
+          afterItems();
+        });
+      } else {
+        afterItems();
+      }
+    });
   });
 
   $('#btn-new-checklist').addEventListener('click', function(){ openNewChecklistModal(); });
@@ -938,16 +1188,31 @@
   $('#btn-confirm-new-template').addEventListener('click', function(){
     var name = $('#new-template-name').value.trim();
     if(!name){ showToast('Dá um nome ao modelo.'); $('#new-template-name').focus(); return; }
-    state.templates.push({
-      id: uid('tpl'),
-      name: name,
-      items: newTemplateDraftItems.map(function(i){ return { id: uid('item'), text: i.text }; }),
-      createdAt: Date.now()
+    var draftItems = newTemplateDraftItems.slice();
+    var confirmBtn = $('#btn-confirm-new-template');
+    confirmBtn.disabled = true;
+
+    supa.from('checklist_templates').insert({ name: name }).select().single().then(function(res){
+      if(res.error){ confirmBtn.disabled = false; showToast('Erro ao guardar modelo: ' + errMsg(res.error)); return; }
+      var tpl = res.data;
+      tpl.items = [];
+      var finish = function(){
+        confirmBtn.disabled = false;
+        state.templates.push(tpl);
+        closeNewTemplateModal();
+        renderTemplatesGrid();
+        showToast('Modelo guardado.');
+      };
+      if(draftItems.length){
+        var rows = draftItems.map(function(it, idx){ return { template_id: tpl.id, text: it.text, position: idx }; });
+        supa.from('checklist_template_items').insert(rows).select().then(function(iRes){
+          if(!iRes.error) tpl.items = iRes.data;
+          finish();
+        });
+      } else {
+        finish();
+      }
     });
-    saveData();
-    closeNewTemplateModal();
-    renderTemplatesGrid();
-    showToast('Modelo guardado.');
   });
 
   // ---------- modal: save checklist as template ----------
@@ -969,15 +1234,29 @@
     if(!cl) return;
     var name = $('#save-template-name').value.trim();
     if(!name){ showToast('Dá um nome ao modelo.'); $('#save-template-name').focus(); return; }
-    state.templates.push({
-      id: uid('tpl'),
-      name: name,
-      items: cl.items.map(function(i){ return { id: uid('item'), text: i.text }; }),
-      createdAt: Date.now()
+    var confirmBtn = $('#btn-confirm-save-template');
+    confirmBtn.disabled = true;
+
+    supa.from('checklist_templates').insert({ name: name }).select().single().then(function(res){
+      if(res.error){ confirmBtn.disabled = false; showToast('Erro ao guardar modelo: ' + errMsg(res.error)); return; }
+      var tpl = res.data;
+      tpl.items = [];
+      var finish = function(){
+        confirmBtn.disabled = false;
+        state.templates.push(tpl);
+        closeSaveAsTemplateModal();
+        showToast('Modelo "' + name + '" guardado.');
+      };
+      if(cl.items.length){
+        var rows = cl.items.map(function(it, idx){ return { template_id: tpl.id, text: it.text, position: idx }; });
+        supa.from('checklist_template_items').insert(rows).select().then(function(iRes){
+          if(!iRes.error) tpl.items = iRes.data;
+          finish();
+        });
+      } else {
+        finish();
+      }
     });
-    saveData();
-    closeSaveAsTemplateModal();
-    showToast('Modelo "' + name + '" guardado.');
   });
 
   // ---------- shared modal behaviour ----------
@@ -992,9 +1271,26 @@
     }
   });
 
-  // ---------- init ----------
-  renderListsGrid();
-  renderTemplatesGrid();
+  // ---------- auth wiring ----------
+  if(!supa){
+    setAuthError('#login-error', 'Ligação à base de dados não disponível.');
+  } else {
+    supa.auth.onAuthStateChange(function(event, session){
+      if(session && session.user){
+        currentUser = session.user;
+        $('#user-email').textContent = currentUser.email || '';
+        showAppScreen();
+        resetState();
+        loadAllData().then(function(){
+          showTab('lists');
+        });
+      } else {
+        currentUser = null;
+        resetState();
+        showAuthScreen();
+      }
+    });
+  }
 })();
 </script>
 </body>
