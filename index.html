@@ -7,35 +7,35 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
-    --bg:#f4f5fb;
+    --bg:#f9f6fb;
     --surface:#ffffff;
-    --surface-alt:#f0f1f8;
-    --text:#1f2430;
-    --text-muted:#6b7280;
-    --border:#e4e6f0;
-    --primary:#6366f1;
-    --primary-hover:#4f46e5;
-    --primary-soft:#eef0fe;
-    --danger:#ef4444;
-    --danger-soft:#fdecec;
-    --success:#22c55e;
-    --shadow:0 1px 2px rgba(20,20,50,.04), 0 6px 20px rgba(20,20,50,.06);
+    --surface-alt:#f2ecf8;
+    --text:#4b4458;
+    --text-muted:#948da0;
+    --border:#e8dfef;
+    --primary:#9b87d1;
+    --primary-hover:#8a75c4;
+    --primary-soft:#ece3f8;
+    --danger:#d98888;
+    --danger-soft:#fbeaea;
+    --success:#8fcfb0;
+    --shadow:0 1px 2px rgba(80,60,100,.05), 0 6px 20px rgba(80,60,100,.07);
     --radius:14px;
   }
   @media (prefers-color-scheme: dark){
     :root{
-      --bg:#14151f;
-      --surface:#1c1e2b;
-      --surface-alt:#242739;
-      --text:#eef0fb;
-      --text-muted:#9aa0b4;
-      --border:#2e3145;
-      --primary:#818cf8;
-      --primary-hover:#a5b0fb;
-      --primary-soft:#272a44;
-      --danger:#f87171;
-      --danger-soft:#3a2230;
-      --success:#4ade80;
+      --bg:#221f2b;
+      --surface:#2b2736;
+      --surface-alt:#332e42;
+      --text:#f1ecf7;
+      --text-muted:#b3a9c2;
+      --border:#3d3750;
+      --primary:#b7a6e8;
+      --primary-hover:#c9bcef;
+      --primary-soft:#3a3450;
+      --danger:#f0a8a8;
+      --danger-soft:#4a2f36;
+      --success:#a3e0c2;
       --shadow:0 1px 2px rgba(0,0,0,.3), 0 6px 24px rgba(0,0,0,.35);
     }
   }
@@ -190,7 +190,7 @@
 <!-- AUTH SCREEN -->
 <div class="auth-screen" id="auth-screen">
   <div class="auth-card">
-    <h1>✅ Checklists</h1>
+    <h1>Checklists</h1>
     <p class="hint" id="auth-subtitle">Entra para veres as tuas checklists.</p>
 
     <form class="auth-form" id="login-form">
@@ -231,7 +231,7 @@
 <div class="app hidden" id="app-screen">
 
   <header class="topbar">
-    <h1>✅ Checklists</h1>
+    <h1>Checklists</h1>
     <div class="topbar-right">
       <nav class="tabs">
         <button class="tab active" id="tab-lists" data-view="lists">As minhas checklists</button>
