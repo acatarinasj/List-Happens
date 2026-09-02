@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Checklists — organiza as tuas listas</title>
+<title>List Happens — organiza as tuas listas</title>
+<link rel="icon" type="image/png" href="apple-touch-icon.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{
@@ -55,7 +57,9 @@
     background:var(--surface); border:1px solid var(--border); border-radius:16px; box-shadow:var(--shadow);
     padding:32px; width:100%; max-width:380px;
   }
-  .auth-card h1{ margin:0 0 4px; font-size:1.4rem; text-align:center; }
+  .auth-card h1{ margin:0 0 4px; font-size:1.4rem; text-align:center; display:flex; align-items:center; justify-content:center; gap:10px; }
+  .brand-icon{ width:32px; height:32px; border-radius:9px; flex-shrink:0; }
+  h1 .brand-accent{ color:var(--primary); }
   .auth-card .hint{ text-align:center; margin:0 0 20px; }
   .auth-form{ display:flex; flex-direction:column; gap:14px; }
   .auth-submit{ width:100%; margin-top:4px; }
@@ -190,7 +194,7 @@
 <!-- AUTH SCREEN -->
 <div class="auth-screen" id="auth-screen">
   <div class="auth-card">
-    <h1>Checklists</h1>
+    <h1><img src="assets/logo-icon.png" alt="" class="brand-icon">List <span class="brand-accent">Happens</span></h1>
     <p class="hint" id="auth-subtitle">Entra para veres as tuas checklists.</p>
 
     <form class="auth-form" id="login-form">
@@ -231,7 +235,7 @@
 <div class="app hidden" id="app-screen">
 
   <header class="topbar">
-    <h1>Checklists</h1>
+    <h1><img src="assets/logo-icon.png" alt="" class="brand-icon">List <span class="brand-accent">Happens</span></h1>
     <div class="topbar-right">
       <nav class="tabs">
         <button class="tab active" id="tab-lists" data-view="lists">As minhas checklists</button>
