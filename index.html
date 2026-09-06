@@ -244,14 +244,14 @@
       <button class="btn subtle btn-sm" id="btn-logout">Sair</button>
     </div>
     <nav class="tabs">
-      <button class="tab active" id="tab-lists" data-view="lists">As minhas checklists</button>
+      <button class="tab active" id="tab-todo" data-view="todo">To Do</button>
+      <button class="tab" id="tab-lists" data-view="lists">As minhas checklists</button>
       <button class="tab" id="tab-templates" data-view="templates">Modelos</button>
-      <button class="tab" id="tab-todo" data-view="todo">To Do</button>
     </nav>
   </header>
 
   <!-- LISTS VIEW -->
-  <main id="view-lists" class="view active">
+  <main id="view-lists" class="view">
     <div class="toolbar">
       <input type="search" id="search-lists" placeholder="Procurar checklist...">
       <button class="btn primary" id="btn-new-checklist">+ Nova checklist</button>
@@ -272,7 +272,7 @@
   </main>
 
   <!-- TO DO VIEW -->
-  <main id="view-todo" class="view">
+  <main id="view-todo" class="view active">
     <div class="toolbar">
       <input type="search" id="search-todo" placeholder="Procurar atividade ou categoria...">
     </div>
@@ -1448,7 +1448,7 @@
         showAppScreen();
         resetState();
         loadAllData().then(function(){
-          showTab('lists');
+          showTab('todo');
         });
       } else {
         currentUser = null;
