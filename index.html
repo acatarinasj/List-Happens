@@ -147,6 +147,8 @@
   .item-text.done{ text-decoration:line-through; color:var(--text-muted); }
   .item-edit-input{ flex:1; }
   .item-row .icon-btn{ flex-shrink:0; }
+  .item-link{ flex-shrink:0; color:var(--primary); font-weight:600; font-size:.85rem; text-decoration:none; white-space:nowrap; }
+  .item-link:hover{ text-decoration:underline; }
 
   form.add-item-form{ display:flex; gap:8px; margin-bottom:22px; }
   form.add-item-form input{ flex:1; }
@@ -245,6 +247,7 @@
     </div>
     <nav class="tabs">
       <button class="tab active" id="tab-todo" data-view="todo">To Do</button>
+      <button class="tab" id="tab-workshops" data-view="workshops">Workshops</button>
       <button class="tab" id="tab-lists" data-view="lists">As minhas checklists</button>
       <button class="tab" id="tab-templates" data-view="templates">Modelos</button>
     </nav>
@@ -284,6 +287,22 @@
     </form>
     <div id="todo-list"></div>
     <p class="empty-state hidden" id="todo-empty">Ainda não tens atividades registadas. Adiciona a primeira acima.</p>
+  </main>
+
+  <!-- WORKSHOPS VIEW -->
+  <main id="view-workshops" class="view">
+    <div class="toolbar">
+      <input type="search" id="search-workshops" placeholder="Procurar atividade ou categoria...">
+    </div>
+    <form class="todo-add-form" id="workshop-add-form">
+      <input type="text" id="workshop-activity-input" placeholder="Atividade..." required>
+      <input type="text" id="workshop-category-input" list="workshop-category-options" placeholder="Categoria..." required>
+      <datalist id="workshop-category-options"></datalist>
+      <input type="url" id="workshop-link-input" placeholder="Link (opcional)...">
+      <button type="submit" class="btn primary">Adicionar</button>
+    </form>
+    <div id="workshop-list"></div>
+    <p class="empty-state hidden" id="workshop-empty">Ainda não tens workshops registados. Adiciona o primeiro acima.</p>
   </main>
 
   <!-- CHECKLIST DETAIL VIEW -->
@@ -439,7 +458,7 @@
 
   // ---------- state ----------
   var currentUser = null;
-  var state = { checklists: [], templates: [], todos: [] };
+  var state = { checklists: [], templates: [], todos: [], workshops: [] };
   var currentChecklistId = null;
   var currentTemplateId = null;
   var newChecklistDraftItems = [];
@@ -523,7 +542,7 @@
 
   // ---------- data loading ----------
   function resetState(){
-    state = { checklists: [], templates: [], todos: [] };
+    state = { checklists: [], templates: [], todos: [], workshops: [] };
     currentChecklistId = null;
     currentTemplateId = null;
   }
@@ -538,13 +557,14 @@
       supa.from('checklist_items').select('*').order('position', { ascending: true }),
       supa.from('checklist_templates').select('*').order('name', { ascending: true }),
       supa.from('checklist_template_items').select('*').order('position', { ascending: true }),
-      supa.from('todo_items').select('*').order('created_at', { ascending: false })
+      supa.from('todo_items').select('*').order('created_at', { ascending: false }),
+      supa.from('workshop_items').select('*').order('created_at', { ascending: false })
     ]).then(function(results){
-      var checklistsRes = results[0], itemsRes = results[1], templatesRes = results[2], templateItemsRes = results[3], todosRes = results[4];
-      var firstError = checklistsRes.error || itemsRes.error || templatesRes.error || templateItemsRes.error || todosRes.error;
+      var checklistsRes = results[0], itemsRes = results[1], templatesRes = results[2], templateItemsRes = results[3], todosRes = results[4], workshopsRes = results[5];
+      var firstError = checklistsRes.error || itemsRes.error || templatesRes.error || templateItemsRes.error || todosRes.error || workshopsRes.error;
       if(firstError){
         showToast('Erro ao carregar dados: ' + errMsg(firstError));
-        state = { checklists: [], templates: [], todos: [] };
+        state = { checklists: [], templates: [], todos: [], workshops: [] };
         return;
       }
       var itemsByChecklist = {};
@@ -564,6 +584,7 @@
         return t;
       });
       state.todos = todosRes.data || [];
+      state.workshops = workshopsRes.data || [];
     }).finally(function(){
       $('#lists-loading').classList.add('hidden');
     });
@@ -581,6 +602,7 @@
     if(name === 'lists') renderListsGrid();
     if(name === 'templates') renderTemplatesGrid();
     if(name === 'todo') renderTodoList();
+    if(name === 'workshops') renderWorkshopList();
   }
 
   $$('nav.tabs button').forEach(function(btn){
@@ -728,32 +750,22 @@
 
   $('#search-templates').addEventListener('input', renderTemplatesGrid);
 
-  // ---------- to do ----------
-  function populateTodoCategoryOptions(){
-    var datalist = $('#todo-category-options');
-    datalist.innerHTML = '';
+  // ---------- shared: grouped-by-category lists (To Do / Workshops) ----------
+  function populateCategoryOptions(datalistEl, items){
+    datalistEl.innerHTML = '';
     var seen = {};
-    state.todos.forEach(function(t){
+    items.forEach(function(t){
       var cat = t.category;
       if(!cat || seen[cat]) return;
       seen[cat] = true;
       var opt = document.createElement('option');
       opt.value = cat;
-      datalist.appendChild(opt);
+      datalistEl.appendChild(opt);
     });
   }
 
-  function renderTodoList(){
-    populateTodoCategoryOptions();
-    var container = $('#todo-list');
-    var query = $('#search-todo').value.trim().toLowerCase();
+  function renderGroupedByCategory(container, items, buildRowFn){
     container.innerHTML = '';
-    var items = state.todos.filter(function(t){
-      return t.activity.toLowerCase().indexOf(query) !== -1 || t.category.toLowerCase().indexOf(query) !== -1;
-    });
-
-    $('#todo-empty').classList.toggle('hidden', state.todos.length !== 0);
-
     var groups = {};
     var categoryOrder = [];
     items.forEach(function(t){
@@ -773,13 +785,25 @@
       var list = document.createElement('div');
       list.className = 'items-list';
       groups[category].forEach(function(t){
-        list.appendChild(buildTodoItemRow(t));
+        list.appendChild(buildRowFn(t));
       });
 
       block.appendChild(title);
       block.appendChild(list);
       container.appendChild(block);
     });
+  }
+
+  // ---------- to do ----------
+  function renderTodoList(){
+    populateCategoryOptions($('#todo-category-options'), state.todos);
+    var query = $('#search-todo').value.trim().toLowerCase();
+    var items = state.todos.filter(function(t){
+      return t.activity.toLowerCase().indexOf(query) !== -1 || t.category.toLowerCase().indexOf(query) !== -1;
+    });
+
+    $('#todo-empty').classList.toggle('hidden', state.todos.length !== 0);
+    renderGroupedByCategory($('#todo-list'), items, buildTodoItemRow);
   }
 
   function buildTodoItemRow(t){
@@ -838,6 +862,94 @@
       activityInput.value = '';
       categoryInput.value = '';
       renderTodoList();
+      activityInput.focus();
+    });
+  });
+
+  // ---------- workshops ----------
+  function renderWorkshopList(){
+    populateCategoryOptions($('#workshop-category-options'), state.workshops);
+    var query = $('#search-workshops').value.trim().toLowerCase();
+    var items = state.workshops.filter(function(t){
+      return t.activity.toLowerCase().indexOf(query) !== -1 || t.category.toLowerCase().indexOf(query) !== -1;
+    });
+
+    $('#workshop-empty').classList.toggle('hidden', state.workshops.length !== 0);
+    renderGroupedByCategory($('#workshop-list'), items, buildWorkshopItemRow);
+  }
+
+  function buildWorkshopItemRow(t){
+    var row = document.createElement('div');
+    row.className = 'item-row';
+
+    var checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = !!t.done;
+    checkbox.addEventListener('change', function(){
+      var newVal = checkbox.checked;
+      var prevVal = t.done;
+      t.done = newVal;
+      renderWorkshopList();
+      supa.from('workshop_items').update({ done: newVal }).eq('id', t.id).then(function(res){
+        if(res.error){ t.done = prevVal; renderWorkshopList(); showToast('Erro ao guardar: ' + errMsg(res.error)); }
+      });
+    });
+
+    var text = document.createElement('span');
+    text.className = 'item-text' + (t.done ? ' done' : '');
+    text.textContent = t.activity;
+
+    if(t.link){
+      var link = document.createElement('a');
+      link.className = 'item-link';
+      link.href = t.link;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = 'Abrir ↗';
+      row.appendChild(checkbox);
+      row.appendChild(text);
+      row.appendChild(link);
+    } else {
+      row.appendChild(checkbox);
+      row.appendChild(text);
+    }
+
+    var del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'icon-btn';
+    del.textContent = '✕';
+    del.title = 'Remover';
+    del.addEventListener('click', function(){
+      supa.from('workshop_items').delete().eq('id', t.id).then(function(res){
+        if(res.error){ showToast('Erro ao remover: ' + errMsg(res.error)); return; }
+        state.workshops = state.workshops.filter(function(x){ return x.id !== t.id; });
+        renderWorkshopList();
+      });
+    });
+    row.appendChild(del);
+
+    return row;
+  }
+
+  $('#search-workshops').addEventListener('input', renderWorkshopList);
+
+  $('#workshop-add-form').addEventListener('submit', function(e){
+    e.preventDefault();
+    var activityInput = $('#workshop-activity-input');
+    var categoryInput = $('#workshop-category-input');
+    var linkInput = $('#workshop-link-input');
+    var activity = activityInput.value.trim();
+    var category = categoryInput.value.trim();
+    var link = linkInput.value.trim();
+    if(!activity || !category) return;
+
+    supa.from('workshop_items').insert({ activity: activity, category: category, link: link || null }).select().single().then(function(res){
+      if(res.error){ showToast('Erro ao adicionar: ' + errMsg(res.error)); return; }
+      state.workshops.unshift(res.data);
+      activityInput.value = '';
+      categoryInput.value = '';
+      linkInput.value = '';
+      renderWorkshopList();
       activityInput.focus();
     });
   });
