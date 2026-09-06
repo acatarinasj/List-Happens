@@ -153,7 +153,8 @@
 
   .todo-add-form{ display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap; }
   .todo-add-form input{ flex:1; min-width:140px; }
-  .category-badge{ background:var(--primary-soft); color:var(--primary-hover); font-size:.78rem; font-weight:600; padding:3px 10px; border-radius:999px; white-space:nowrap; flex-shrink:0; }
+  .todo-category-block{ margin-bottom:20px; }
+  .todo-category-title{ font-size:.85rem; font-weight:700; color:var(--primary-hover); text-transform:uppercase; letter-spacing:.04em; margin:0 0 8px 4px; }
 
   .detail-actions{ display:flex; flex-wrap:wrap; gap:10px; }
 
@@ -281,7 +282,7 @@
       <datalist id="todo-category-options"></datalist>
       <button type="submit" class="btn primary">Adicionar</button>
     </form>
-    <div class="items-list" id="todo-list"></div>
+    <div id="todo-list"></div>
     <p class="empty-state hidden" id="todo-empty">Ainda não tens atividades registadas. Adiciona a primeira acima.</p>
   </main>
 
@@ -744,17 +745,40 @@
 
   function renderTodoList(){
     populateTodoCategoryOptions();
-    var list = $('#todo-list');
+    var container = $('#todo-list');
     var query = $('#search-todo').value.trim().toLowerCase();
-    list.innerHTML = '';
+    container.innerHTML = '';
     var items = state.todos.filter(function(t){
       return t.activity.toLowerCase().indexOf(query) !== -1 || t.category.toLowerCase().indexOf(query) !== -1;
     });
 
     $('#todo-empty').classList.toggle('hidden', state.todos.length !== 0);
 
+    var groups = {};
+    var categoryOrder = [];
     items.forEach(function(t){
-      list.appendChild(buildTodoItemRow(t));
+      if(!groups[t.category]){ groups[t.category] = []; categoryOrder.push(t.category); }
+      groups[t.category].push(t);
+    });
+    categoryOrder.sort(function(a, b){ return a.localeCompare(b, 'pt'); });
+
+    categoryOrder.forEach(function(category){
+      var block = document.createElement('div');
+      block.className = 'todo-category-block';
+
+      var title = document.createElement('h3');
+      title.className = 'todo-category-title';
+      title.textContent = category;
+
+      var list = document.createElement('div');
+      list.className = 'items-list';
+      groups[category].forEach(function(t){
+        list.appendChild(buildTodoItemRow(t));
+      });
+
+      block.appendChild(title);
+      block.appendChild(list);
+      container.appendChild(block);
     });
   }
 
@@ -779,10 +803,6 @@
     text.className = 'item-text' + (t.done ? ' done' : '');
     text.textContent = t.activity;
 
-    var badge = document.createElement('span');
-    badge.className = 'category-badge';
-    badge.textContent = t.category;
-
     var del = document.createElement('button');
     del.type = 'button';
     del.className = 'icon-btn';
@@ -798,7 +818,6 @@
 
     row.appendChild(checkbox);
     row.appendChild(text);
-    row.appendChild(badge);
     row.appendChild(del);
     return row;
   }
