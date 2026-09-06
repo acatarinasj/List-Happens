@@ -151,6 +151,10 @@
   form.add-item-form{ display:flex; gap:8px; margin-bottom:22px; }
   form.add-item-form input{ flex:1; }
 
+  .todo-add-form{ display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap; }
+  .todo-add-form input{ flex:1; min-width:140px; }
+  .category-badge{ background:var(--primary-soft); color:var(--primary-hover); font-size:.78rem; font-weight:600; padding:3px 10px; border-radius:999px; white-space:nowrap; flex-shrink:0; }
+
   .detail-actions{ display:flex; flex-wrap:wrap; gap:10px; }
 
   .back-btn{ margin-bottom:16px; }
@@ -241,6 +245,7 @@
     <nav class="tabs">
       <button class="tab active" id="tab-lists" data-view="lists">As minhas checklists</button>
       <button class="tab" id="tab-templates" data-view="templates">Modelos</button>
+      <button class="tab" id="tab-todo" data-view="todo">To Do</button>
     </nav>
   </header>
 
@@ -263,6 +268,21 @@
     </div>
     <div class="cards-grid" id="templates-grid"></div>
     <p class="empty-state hidden" id="templates-empty">Ainda não tens nenhum modelo guardado. Guarda uma checklist como modelo para a reutilizares mais tarde.</p>
+  </main>
+
+  <!-- TO DO VIEW -->
+  <main id="view-todo" class="view">
+    <div class="toolbar">
+      <input type="search" id="search-todo" placeholder="Procurar atividade ou categoria...">
+    </div>
+    <form class="todo-add-form" id="todo-add-form">
+      <input type="text" id="todo-activity-input" placeholder="Atividade..." required>
+      <input type="text" id="todo-category-input" list="todo-category-options" placeholder="Categoria..." required>
+      <datalist id="todo-category-options"></datalist>
+      <button type="submit" class="btn primary">Adicionar</button>
+    </form>
+    <div class="items-list" id="todo-list"></div>
+    <p class="empty-state hidden" id="todo-empty">Ainda não tens atividades registadas. Adiciona a primeira acima.</p>
   </main>
 
   <!-- CHECKLIST DETAIL VIEW -->
@@ -418,7 +438,7 @@
 
   // ---------- state ----------
   var currentUser = null;
-  var state = { checklists: [], templates: [] };
+  var state = { checklists: [], templates: [], todos: [] };
   var currentChecklistId = null;
   var currentTemplateId = null;
   var newChecklistDraftItems = [];
@@ -502,7 +522,7 @@
 
   // ---------- data loading ----------
   function resetState(){
-    state = { checklists: [], templates: [] };
+    state = { checklists: [], templates: [], todos: [] };
     currentChecklistId = null;
     currentTemplateId = null;
   }
@@ -516,13 +536,14 @@
       supa.from('checklists').select('*').order('created_at', { ascending: false }),
       supa.from('checklist_items').select('*').order('position', { ascending: true }),
       supa.from('checklist_templates').select('*').order('name', { ascending: true }),
-      supa.from('checklist_template_items').select('*').order('position', { ascending: true })
+      supa.from('checklist_template_items').select('*').order('position', { ascending: true }),
+      supa.from('todo_items').select('*').order('created_at', { ascending: false })
     ]).then(function(results){
-      var checklistsRes = results[0], itemsRes = results[1], templatesRes = results[2], templateItemsRes = results[3];
-      var firstError = checklistsRes.error || itemsRes.error || templatesRes.error || templateItemsRes.error;
+      var checklistsRes = results[0], itemsRes = results[1], templatesRes = results[2], templateItemsRes = results[3], todosRes = results[4];
+      var firstError = checklistsRes.error || itemsRes.error || templatesRes.error || templateItemsRes.error || todosRes.error;
       if(firstError){
         showToast('Erro ao carregar dados: ' + errMsg(firstError));
-        state = { checklists: [], templates: [] };
+        state = { checklists: [], templates: [], todos: [] };
         return;
       }
       var itemsByChecklist = {};
@@ -541,6 +562,7 @@
         t.items = itemsByTemplate[t.id] || [];
         return t;
       });
+      state.todos = todosRes.data || [];
     }).finally(function(){
       $('#lists-loading').classList.add('hidden');
     });
@@ -557,6 +579,7 @@
     showView(name);
     if(name === 'lists') renderListsGrid();
     if(name === 'templates') renderTemplatesGrid();
+    if(name === 'todo') renderTodoList();
   }
 
   $$('nav.tabs button').forEach(function(btn){
@@ -703,6 +726,102 @@
   }
 
   $('#search-templates').addEventListener('input', renderTemplatesGrid);
+
+  // ---------- to do ----------
+  function populateTodoCategoryOptions(){
+    var datalist = $('#todo-category-options');
+    datalist.innerHTML = '';
+    var seen = {};
+    state.todos.forEach(function(t){
+      var cat = t.category;
+      if(!cat || seen[cat]) return;
+      seen[cat] = true;
+      var opt = document.createElement('option');
+      opt.value = cat;
+      datalist.appendChild(opt);
+    });
+  }
+
+  function renderTodoList(){
+    populateTodoCategoryOptions();
+    var list = $('#todo-list');
+    var query = $('#search-todo').value.trim().toLowerCase();
+    list.innerHTML = '';
+    var items = state.todos.filter(function(t){
+      return t.activity.toLowerCase().indexOf(query) !== -1 || t.category.toLowerCase().indexOf(query) !== -1;
+    });
+
+    $('#todo-empty').classList.toggle('hidden', state.todos.length !== 0);
+
+    items.forEach(function(t){
+      list.appendChild(buildTodoItemRow(t));
+    });
+  }
+
+  function buildTodoItemRow(t){
+    var row = document.createElement('div');
+    row.className = 'item-row';
+
+    var checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = !!t.done;
+    checkbox.addEventListener('change', function(){
+      var newVal = checkbox.checked;
+      var prevVal = t.done;
+      t.done = newVal;
+      renderTodoList();
+      supa.from('todo_items').update({ done: newVal }).eq('id', t.id).then(function(res){
+        if(res.error){ t.done = prevVal; renderTodoList(); showToast('Erro ao guardar: ' + errMsg(res.error)); }
+      });
+    });
+
+    var text = document.createElement('span');
+    text.className = 'item-text' + (t.done ? ' done' : '');
+    text.textContent = t.activity;
+
+    var badge = document.createElement('span');
+    badge.className = 'category-badge';
+    badge.textContent = t.category;
+
+    var del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'icon-btn';
+    del.textContent = '✕';
+    del.title = 'Remover';
+    del.addEventListener('click', function(){
+      supa.from('todo_items').delete().eq('id', t.id).then(function(res){
+        if(res.error){ showToast('Erro ao remover: ' + errMsg(res.error)); return; }
+        state.todos = state.todos.filter(function(x){ return x.id !== t.id; });
+        renderTodoList();
+      });
+    });
+
+    row.appendChild(checkbox);
+    row.appendChild(text);
+    row.appendChild(badge);
+    row.appendChild(del);
+    return row;
+  }
+
+  $('#search-todo').addEventListener('input', renderTodoList);
+
+  $('#todo-add-form').addEventListener('submit', function(e){
+    e.preventDefault();
+    var activityInput = $('#todo-activity-input');
+    var categoryInput = $('#todo-category-input');
+    var activity = activityInput.value.trim();
+    var category = categoryInput.value.trim();
+    if(!activity || !category) return;
+
+    supa.from('todo_items').insert({ activity: activity, category: category }).select().single().then(function(res){
+      if(res.error){ showToast('Erro ao adicionar: ' + errMsg(res.error)); return; }
+      state.todos.unshift(res.data);
+      activityInput.value = '';
+      categoryInput.value = '';
+      renderTodoList();
+      activityInput.focus();
+    });
+  });
 
   // ---------- checklist detail ----------
   function openChecklistDetail(id){
